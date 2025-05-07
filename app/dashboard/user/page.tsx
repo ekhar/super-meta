@@ -6,12 +6,15 @@ import { useEffect, useState } from 'react'
 import type { Database } from '@/lib/database.types'
 import CreateDatabaseButton from '@/components/CreateDatabaseButton'
 import DeleteDatabaseButton from '@/components/DeleteDatabaseButton'
+import { Button } from '@/components/ui/button'
+import { ConnectModal } from './ConnectModal'
 
 type DatabaseRow = Database['public']['Tables']['databases']['Row']
 
 export default function UserDashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [dbStats, setDbStats] = useState<DatabaseRow[] | null>(null)
+  const [selectedDb, setSelectedDb] = useState<DatabaseRow | null>(null)
   const supabase = createClient()
 
   const fetchDatabases = async () => {
@@ -118,7 +121,14 @@ export default function UserDashboardPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                     {new Date(db.created_at).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedDb(db)}
+                    >
+                      Connect
+                    </Button>
                     <DeleteDatabaseButton dbName={db.name} onDelete={fetchDatabases} />
                   </td>
                 </tr>
@@ -134,6 +144,15 @@ export default function UserDashboardPage() {
           </table>
         </div>
       </div>
+
+      {selectedDb && (
+        <ConnectModal
+          isOpen={!!selectedDb}
+          onClose={() => setSelectedDb(null)}
+          databaseId={selectedDb.id}
+          projectUrl={process.env.NEXT_PUBLIC_SUPABASE_URL || ''}
+        />
+      )}
     </div>
   )
 } 
