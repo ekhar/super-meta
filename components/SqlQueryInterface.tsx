@@ -6,6 +6,7 @@ import { createClient } from '@/utils/supabase/client'
 
 interface SqlQueryInterfaceProps {
   dbName: string
+  onQueryComplete?: () => void
 }
 
 interface QueryResult {
@@ -14,7 +15,7 @@ interface QueryResult {
   [key: string]: any
 }
 
-export default function SqlQueryInterface({ dbName }: SqlQueryInterfaceProps) {
+export default function SqlQueryInterface({ dbName, onQueryComplete }: SqlQueryInterfaceProps) {
   const [sql, setSql] = useState('')
   const [results, setResults] = useState<QueryResult[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -59,6 +60,11 @@ export default function SqlQueryInterface({ dbName }: SqlQueryInterfaceProps) {
       }
 
       setResults(Array.isArray(data.data) ? data.data : [data.data])
+      
+      // Call the onQueryComplete callback after successful query execution
+      if (onQueryComplete) {
+        onQueryComplete()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {

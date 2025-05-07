@@ -19,59 +19,60 @@ interface TableInfo {
 
 interface TablePreviewProps {
   dbName: string
+  refreshTrigger?: number
 }
 
-export default function TablePreview({ dbName }: TablePreviewProps) {
+export default function TablePreview({ dbName, refreshTrigger = 0 }: TablePreviewProps) {
   const [tables, setTables] = useState<TableInfo[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   
   const supabase = createClient()
 
-  useEffect(() => {
-    const fetchTables = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
-          throw new Error('Not authenticated')
-        }
-
-        const response = await fetch('http://127.0.0.1:54321/functions/v1/get-tables', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ dbName }),
-        })
-
-        const result = await response.json()
-        
-        if (!response.ok) {
-          throw new Error(result.error || 'Failed to fetch tables')
-        }
-
-        if (!result.data) {
-          throw new Error('Invalid response format')
-        }
-
-        setTables(result.data)
-        setError(null)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred')
-        setTables([])
-      } finally {
-        setIsLoading(false)
+  const fetchTables = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        throw new Error('Not authenticated')
       }
-    }
 
+      const response = await fetch('http://127.0.0.1:54321/functions/v1/get-tables', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ dbName }),
+      })
+
+      const result = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to fetch tables')
+      }
+
+      if (!result.data) {
+        throw new Error('Invalid response format')
+      }
+
+      setTables(result.data)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+      setTables([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
     if (dbName) {
       fetchTables()
     } else {
       setError('Database name is required')
       setIsLoading(false)
     }
-  }, [dbName])
+  }, [dbName, refreshTrigger])
 
   if (isLoading) {
     return (
