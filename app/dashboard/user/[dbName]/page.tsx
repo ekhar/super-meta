@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import SqlQueryInterface from '@/components/SqlQueryInterface'
+import TablePreview from '@/components/TablePreview'
 import Link from 'next/link'
 
 export default async function DatabasePage({ params }: { params: { dbName: string } }) {
@@ -36,7 +37,11 @@ export default async function DatabasePage({ params }: { params: { dbName: strin
           ← Back to Dashboard
         </Link>
       </div>
-      <SqlQueryInterface dbName={dbName} />
+      
+      <div className="space-y-8">
+        <TablePreview dbName={dbName} />
+        <SqlQueryInterface dbName={dbName} />
+      </div>
     </div>
   )
 } 

@@ -12,6 +12,52 @@ interface RunQueryRequest {
   params?: unknown[];
 }
 
+interface QueryResult {
+  [key: string]: unknown;
+}
+
+// Split SQL statements while preserving quoted content
+function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let currentStatement = '';
+  let inQuote = false;
+  let quoteChar = '';
+
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i];
+    const nextChar = sql[i + 1] || '';
+
+    // Handle quotes
+    if ((char === "'" || char === '"') && sql[i - 1] !== '\\') {
+      if (!inQuote) {
+        inQuote = true;
+        quoteChar = char;
+      } else if (char === quoteChar) {
+        inQuote = false;
+      }
+    }
+
+    // Add character to current statement
+    currentStatement += char;
+
+    // Check for statement end
+    if (char === ';' && !inQuote) {
+      // Skip if this is part of a comment
+      if (!currentStatement.trim().startsWith('--')) {
+        statements.push(currentStatement.trim());
+        currentStatement = '';
+      }
+    }
+  }
+
+  // Add the last statement if it doesn't end with a semicolon
+  if (currentStatement.trim()) {
+    statements.push(currentStatement.trim());
+  }
+
+  return statements.filter(stmt => stmt.length > 0 && !stmt.trim().startsWith('--'));
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -70,23 +116,40 @@ Deno.serve(async (req) => {
     const db = new SQL.Database(uint8Array);
 
     try {
-      // Execute query and get results
-      let results;
-      if (sql.trim().toLowerCase().startsWith('select')) {
-        // For SELECT queries, return the results
-        const stmt = db.prepare(sql);
-        results = [];
-        while (stmt.step()) {
-          results.push(stmt.getAsObject());
+      // Split the SQL into separate statements
+      const statements = splitSqlStatements(sql);
+      let totalRowsAffected = 0;
+      let lastInsertId: number | null = null;
+      let results: QueryResult[] = [];
+
+      // Execute each statement
+      for (const statement of statements) {
+        const trimmedStmt = statement.trim();
+        if (!trimmedStmt) continue;
+
+        if (trimmedStmt.toLowerCase().startsWith('select')) {
+          // For SELECT queries, return the results
+          const stmt = db.prepare(trimmedStmt);
+          const queryResults: QueryResult[] = [];
+          while (stmt.step()) {
+            queryResults.push(stmt.getAsObject());
+          }
+          stmt.free();
+          results = queryResults;
+        } else {
+          // For other queries (INSERT, UPDATE, DELETE), execute and count affected rows
+          try {
+            db.run(trimmedStmt);
+            const changes = db.exec("SELECT changes(), last_insert_rowid()")[0];
+            if (changes && changes.values[0]) {
+              totalRowsAffected += changes.values[0][0] as number;
+              lastInsertId = changes.values[0][1] as number;
+            }
+          } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+            throw new Error(`Error executing statement: ${trimmedStmt}\nError: ${errorMessage}`);
+          }
         }
-        stmt.free();
-      } else {
-        // For other queries (INSERT, UPDATE, DELETE), execute and return affected rows
-        db.run(sql, params);
-        results = { 
-          rowsAffected: db.getRowsModified(),
-          lastInsertId: null // sql.js doesn't provide last insert id
-        };
       }
 
       // Get the modified database content
@@ -115,8 +178,13 @@ Deno.serve(async (req) => {
         .eq('owner_id', user.id)
         .eq('name', dbName);
 
+      // Return appropriate results
+      const responseData = sql.toLowerCase().includes('select') 
+        ? results 
+        : { rowsAffected: totalRowsAffected, lastInsertId };
+
       return new Response(
-        JSON.stringify({ data: results }),
+        JSON.stringify({ data: responseData }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 200
