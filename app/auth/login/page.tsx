@@ -20,7 +20,7 @@ export default async function LoginPage() {
 
     // Redirect based on role
     if (roleData?.role === 'admin') {
-      redirect('/admin/dashboard')
+      redirect('/dashboard/admin')
     } else {
       redirect('/dashboard')
     }

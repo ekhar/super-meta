@@ -39,7 +39,7 @@ export default async function Navbar() {
             </Link>
             {user && (
               <Link 
-                href={isAdmin ? "/admin/dashboard" : "/dashboard"} 
+                href={"/dashboard"} 
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
                 Dashboard
@@ -51,7 +51,7 @@ export default async function Navbar() {
           <div className="flex items-center gap-4">
             {user ? (
               <div className="flex items-center gap-4">
-                <Link href={isAdmin ? "/admin/dashboard" : "/dashboard"}>
+                <Link href={"/dashboard"}>
                   <Button variant="ghost" size="sm" className="gap-2 text-sm hover:text-primary">
                     <LayoutDashboard className="h-4 w-4" />
                     <span className="hidden sm:inline">Dashboard</span>

@@ -75,7 +75,7 @@ export function LoginForm({ className, mode = 'login', ...props }: LoginFormProp
         }
 
         // No need to manually sign in - Supabase handles this
-        router.push(isAdmin ? '/admin/dashboard' : '/dashboard')
+        router.push('/dashboard')
       } else {
         // Login flow
         const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -103,7 +103,7 @@ export function LoginForm({ className, mode = 'login', ...props }: LoginFormProp
         }
 
         // Redirect based on role
-        router.push(roleData?.role === 'admin' ? '/admin/dashboard' : '/dashboard')
+        router.push('/dashboard')
       }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'An error occurred')

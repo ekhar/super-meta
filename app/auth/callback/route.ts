@@ -27,11 +27,7 @@ export async function GET(request: Request) {
         .single();
 
       // Redirect based on role
-      if (roleData?.role === 'admin') {
-        return NextResponse.redirect(`${origin}/admin/dashboard`);
-      } else {
         return NextResponse.redirect(`${origin}/dashboard`);
-      }
     }
   }
 

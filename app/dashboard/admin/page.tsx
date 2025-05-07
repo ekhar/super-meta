@@ -2,6 +2,13 @@ import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import type { Database } from '@/lib/database.types'
 
+type UserWithRole = Database['public']['Tables']['user_roles']['Row'] & {
+  users: {
+    email: string | null
+    created_at: string
+  } | null
+}
+
 export default async function AdminDashboardPage() {
   const supabase = await createClient()
   const { data, error } = await supabase.auth.getUser()
@@ -25,8 +32,14 @@ export default async function AdminDashboardPage() {
   // Get platform-wide statistics
   const { data: allUsers, error: usersError } = await supabase
     .from('user_roles')
-    .select('*, auth.users!user_roles_id_fkey(*)')
-    .order('created_at', { ascending: false })
+    .select(`
+      *,
+      users:auth.users(
+        email,
+        created_at
+      )
+    `)
+    .order('created_at', { ascending: false }) as { data: UserWithRole[] | null, error: any }
 
   if (usersError) {
     console.error('Error fetching users:', usersError)

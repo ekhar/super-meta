@@ -76,7 +76,7 @@ export function SignUpForm({ className, type = 'user', ...props }: SignUpFormPro
         })
         if (signInError) throw signInError
 
-        router.push('/admin/dashboard')
+        router.push('/dashboard')
       } else {
         // For regular users, the trigger will automatically create the user role
         // Sign in the user after successful signup
