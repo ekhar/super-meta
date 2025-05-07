@@ -32,28 +32,40 @@ export async function updateSession(request: NextRequest) {
   // issues with users being randomly logged out.
 
   // IMPORTANT: DO NOT REMOVE auth.getUser()
-
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   // Define public routes that don't require authentication
-  const publicRoutes = ['/', '/auth', '/auth/user', '/auth/admin']
+  const publicRoutes = [
+    '/', 
+    '/auth',
+    '/auth/login',
+    '/auth/signup',
+    '/auth/callback',
+    '/auth/confirm',
+    '/auth/reset-password',
+    '/auth/update-password'
+  ]
+
   const isPublicRoute = publicRoutes.some(route => 
     request.nextUrl.pathname === route || request.nextUrl.pathname.startsWith(route + '/')
   )
 
-  if (
-    !user &&
-    !isPublicRoute &&
-    !request.nextUrl.pathname.startsWith('/_next') &&
-    !request.nextUrl.pathname.startsWith('/api')
-  ) {
-    // Redirect to home page instead of auth page
-    return NextResponse.redirect(new URL('/', request.url))
+  // Check if this is a dashboard route
+  const isDashboardRoute = request.nextUrl.pathname.startsWith('/dashboard')
+
+  if (!user && isDashboardRoute) {
+    // If trying to access dashboard while not authenticated, redirect to login
+    return NextResponse.redirect(new URL('/auth/login', request.url))
   }
 
-  // IMPORTANT: You *must* return the supabaseResponse object as it is.
+  if (user && request.nextUrl.pathname === '/auth/login') {
+    // If authenticated user tries to access login page, redirect to dashboard
+    return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
+
+  // IMPORTANT: You *must* return the supabaseResponse object as is.
   // If you're creating a new response object with NextResponse.next() make sure to:
   // 1. Pass the request in it, like so:
   //    const myNewResponse = NextResponse.next({ request })

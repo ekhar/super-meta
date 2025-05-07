@@ -1,8 +1,10 @@
 import { LoginForm } from '@/components/login-form'
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 
 export default async function LoginPage() {
+  const cookieStore = await cookies()
   const supabase = await createClient()
 
   // Check if user is already logged in

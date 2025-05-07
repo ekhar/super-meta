@@ -34,13 +34,13 @@ export default async function Home() {
               </Link>
             ) : (
               <div className="flex flex-col sm:flex-row gap-4">
-                <Link href="/auth/user">
+                <Link href="/auth">
                   <Button variant="outline" size="lg" className="w-full sm:w-auto min-w-[200px] gradient-border">
                     User Login
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
-                <Link href="/auth/admin">
+                <Link href="/auth" >
                   <Button size="lg" className="w-full sm:w-auto min-w-[200px] gradient-brand hover:gradient-hover">
                     Admin Login
                     <ArrowRight className="ml-2 h-4 w-4" />

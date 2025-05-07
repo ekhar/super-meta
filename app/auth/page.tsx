@@ -1,46 +1,37 @@
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import Link from 'next/link'
+import { LoginForm } from '@/components/login-form'
 
-export default function AuthLanding() {
+export default function AuthPage() {
   return (
-    <div className="container flex min-h-screen items-center justify-center">
-      <div className="grid gap-8 md:grid-cols-2">
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/50 to-purple-500/50 opacity-10" />
-          <div className="relative p-6">
-            <h2 className="mb-2 text-2xl font-bold">User Login</h2>
-            <p className="mb-6 text-muted-foreground">
-              Access your personal database management workspace
+    <div className="container relative flex-col items-center justify-center md:grid lg:max-w-none lg:grid-cols-2 lg:px-0">
+      <div className="relative hidden h-full flex-col bg-muted p-10 text-white lg:flex dark:border-r">
+        <div className="absolute inset-0 bg-zinc-900" />
+        <div className="relative z-20 flex items-center text-lg font-medium">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="mr-2 h-6 w-6"
+          >
+            <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
+          </svg>
+          Super Meta
+        </div>
+        <div className="relative z-20 mt-auto">
+          <blockquote className="space-y-2">
+            <p className="text-lg">
+              Your Database Management Platform
             </p>
-            <div className="space-x-4">
-              <Button asChild>
-                <Link href="/auth/user">Login</Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link href="/auth/user/sign-up">Sign Up</Link>
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/50 to-pink-500/50 opacity-10" />
-          <div className="relative p-6">
-            <h2 className="mb-2 text-2xl font-bold">Admin Login</h2>
-            <p className="mb-6 text-muted-foreground">
-              Manage the platform and user access
-            </p>
-            <div className="space-x-4">
-              <Button asChild>
-                <Link href="/auth/admin">Login</Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link href="/auth/admin/sign-up">Sign Up</Link>
-              </Button>
-            </div>
-          </div>
-        </Card>
+          </blockquote>
+        </div>
+      </div>
+      <div className="p-8">
+        <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
+          <LoginForm />
+        </div>
       </div>
     </div>
   )

@@ -1,4 +1,7 @@
-import { createClient } from '@/utils/supabase/server'
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+import type { Database } from '@/lib/database.types'
 
 type User = {
   id: string
@@ -10,7 +13,34 @@ type User = {
 }
 
 export default async function AdminDashboard() {
-  const supabase = await createClient()
+  const cookieStore = cookies()
+  const supabase = createServerComponentClient<Database>({ cookies: () => cookieStore })
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession()
+
+  if (sessionError || !session) {
+    redirect('/auth/login')
+  }
+
+  // Verify admin status
+  const { data: userData, error: roleError } = await supabase
+    .from('users')
+    .select(`
+      id,
+      user_roles!inner (
+        role
+      )
+    `)
+    .eq('id', session.user.id)
+    .single()
+
+  if (roleError || !userData || userData.user_roles?.role !== 'admin') {
+    console.error('Access denied: User is not an admin')
+    redirect('/dashboard')
+  }
 
   // Fetch all users with their roles
   const { data: users } = await supabase

@@ -3,7 +3,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "gen_types": "npx supabase gen types typescript --local > lib/database.types.ts"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.13",

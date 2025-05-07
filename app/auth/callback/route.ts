@@ -12,13 +12,29 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient();
-    await supabase.auth.exchangeCodeForSession(code);
+    const { data: { session }, error } = await supabase.auth.exchangeCodeForSession(code);
+    
+    if (error) {
+      return NextResponse.redirect(`${origin}/auth/error?error=${error.message}`);
+    }
+
+    if (session) {
+      // Check user role
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+
+      // Redirect based on role
+      if (roleData?.role === 'admin') {
+        return NextResponse.redirect(`${origin}/admin/dashboard`);
+      } else {
+        return NextResponse.redirect(`${origin}/dashboard`);
+      }
+    }
   }
 
-  if (redirectTo) {
-    return NextResponse.redirect(`${origin}${redirectTo}`);
-  }
-
-  // URL to redirect to after sign up process completes
-  return NextResponse.redirect(`${origin}/protected`);
+  // If no code or session, redirect to login
+  return NextResponse.redirect(`${origin}/auth/login`);
 }
