@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import type { Database } from '@/lib/database.types'
+import CreateDatabaseButton from '@/components/CreateDatabaseButton'
 
 export default async function UserDashboardPage() {
   const supabase = await createClient()
@@ -48,7 +49,10 @@ export default async function UserDashboardPage() {
 
   return (
     <div className="container mx-auto py-10">
-      <h1 className="text-4xl font-bold mb-8">My Dashboard</h1>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-4xl font-bold">My Dashboard</h1>
+        <CreateDatabaseButton />
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
