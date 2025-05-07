@@ -122,12 +122,15 @@ SELECT
 FROM auth.users;
 
 -- Then set up their roles
-INSERT INTO public.user_roles (id, role)
+INSERT INTO public.user_roles (id, role, email)
 SELECT 
     id,
     CASE 
         WHEN email = 'admin@super-meta.com' THEN 'admin'::user_role
         ELSE 'user'::user_role
-    END
+    END,
+    email
 FROM auth.users
-ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role; 
+ON CONFLICT (id) DO UPDATE 
+SET role = EXCLUDED.role,
+    email = EXCLUDED.email; 
