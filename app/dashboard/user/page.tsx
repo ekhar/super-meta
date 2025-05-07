@@ -1,47 +1,71 @@
-import { createClient } from '@/utils/supabase/server'
+'use client'
+
+import { createClient } from '@/utils/supabase/client'
 import { redirect } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import type { Database } from '@/lib/database.types'
 import CreateDatabaseButton from '@/components/CreateDatabaseButton'
+import DeleteDatabaseButton from '@/components/DeleteDatabaseButton'
 
-export default async function UserDashboardPage() {
-  const supabase = await createClient()
-  const { data, error } = await supabase.auth.getUser()
-  
-  if (error || !data?.user) {
-    redirect('/')
+type DatabaseRow = Database['public']['Tables']['databases']['Row']
+
+export default function UserDashboardPage() {
+  const [isLoading, setIsLoading] = useState(true)
+  const [dbStats, setDbStats] = useState<DatabaseRow[] | null>(null)
+  const supabase = createClient()
+
+  const fetchDatabases = async () => {
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    
+    if (userError || !user) {
+      redirect('/')
+      return
+    }
+
+    // Get user's role from the user_roles table
+    const { data: roleData, error: roleError } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (roleError || !roleData) {
+      console.error('Error fetching user role:', roleError)
+      redirect('/auth/login')
+      return
+    }
+
+    // If admin, redirect to admin dashboard
+    if (roleData.role === 'admin') {
+      redirect('/dashboard/admin')
+      return
+    }
+
+    // Get user's databases statistics
+    const { data: stats, error: dbError } = await supabase
+      .from('databases')
+      .select('*')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false })
+
+    if (dbError) {
+      console.error('Error fetching database stats:', dbError)
+    }
+
+    setDbStats(stats)
+    setIsLoading(false)
   }
 
-  // Get user's role from the user_roles table
-  const { data: roleData, error: roleError } = await supabase
-    .from('user_roles')
-    .select('role')
-    .eq('id', data.user.id)
-    .single()
+  useEffect(() => {
+    fetchDatabases()
+  }, [])
 
-  if (roleError || !roleData) {
-    console.error('Error fetching user role:', roleError)
-    redirect('/auth/login')
-  }
-
-  // If admin, redirect to admin dashboard
-  if (roleData.role === 'admin') {
-    redirect('/dashboard/admin')
-  }
-
-  // Get user's databases statistics
-  const { data: dbStats, error: dbError } = await supabase
-    .from('databases')
-    .select(`
-      id,
-      name,
-      storage_size_bytes,
-      created_at
-    `)
-    .eq('owner_id', data.user.id)
-    .order('created_at', { ascending: false })
-
-  if (dbError) {
-    console.error('Error fetching database stats:', dbError)
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
   }
 
   const totalDatabases = dbStats?.length || 0
@@ -74,6 +98,7 @@ export default async function UserDashboardPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Size</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Created</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
@@ -93,11 +118,14 @@ export default async function UserDashboardPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                     {new Date(db.created_at).toLocaleDateString()}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                    <DeleteDatabaseButton dbName={db.name} onDelete={fetchDatabases} />
+                  </td>
                 </tr>
               ))}
               {!dbStats?.length && (
                 <tr>
-                  <td colSpan={3} className="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-300">
+                  <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-300">
                     No databases created yet
                   </td>
                 </tr>

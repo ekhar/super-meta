@@ -52,6 +52,11 @@ export default function CreateDatabaseButton() {
     }
   }
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    handleCreate()
+  }
+
   if (!showInput) {
     return (
       <button
@@ -64,7 +69,7 @@ export default function CreateDatabaseButton() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-4 bg-white dark:bg-gray-800 rounded-lg shadow">
       <div className="flex gap-2">
         <input
           type="text"
@@ -73,15 +78,17 @@ export default function CreateDatabaseButton() {
           placeholder="Enter database name"
           className="flex-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
           disabled={isLoading}
+          autoFocus
         />
         <button
-          onClick={handleCreate}
+          type="submit"
           disabled={isLoading}
           className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-lg transition-colors"
         >
           {isLoading ? 'Creating...' : 'Create'}
         </button>
         <button
+          type="button"
           onClick={() => {
             setShowInput(false)
             setError(null)
@@ -95,6 +102,6 @@ export default function CreateDatabaseButton() {
       {error && (
         <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
       )}
-    </div>
+    </form>
   )
 } 
