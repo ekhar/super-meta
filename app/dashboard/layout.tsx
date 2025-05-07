@@ -1,37 +1,39 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
-import { DashboardNav } from '@/components/dashboard/nav'
-import type { Database } from '@/lib/database.types'
+import { LogoutButton } from '@/components/logout-button'
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const supabase = createServerComponentClient<Database>({ cookies })
+  const supabase = await createClient()
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-
+  // Check if user is logged in
+  const { data: { session } } = await supabase.auth.getSession()
+  
   if (!session) {
-    redirect('/auth/login')
+    redirect('/auth')
   }
 
-  // Get user's role
-  const { data: userRole } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', session.user.id)
-    .single()
-
-  const isAdmin = userRole?.role === 'admin'
-
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <DashboardNav isAdmin={isAdmin} />
-      <main>{children}</main>
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container flex h-14 items-center justify-between">
+          <div className="mr-4 flex">
+            <a className="mr-6 flex items-center space-x-2" href="/dashboard">
+              <span className="font-bold">Super Meta</span>
+            </a>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-muted-foreground">
+              {session.user.email}
+            </span>
+            <LogoutButton variant="ghost" />
+          </div>
+        </div>
+      </header>
+      <main className="flex-1">{children}</main>
     </div>
   )
 } 

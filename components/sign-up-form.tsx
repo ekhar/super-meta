@@ -41,11 +41,14 @@ export function SignUpForm({ className, type = 'user', ...props }: SignUpFormPro
     }
 
     try {
-      const { error: signUpError, data } = await supabase.auth.signUp({
+      // Sign up the user
+      const { error: signUpError, data: signUpData } = await supabase.auth.signUp({
         email,
         password,
       })
       if (signUpError) throw signUpError
+
+      if (!signUpData.user) throw new Error('No user data after sign up')
 
       if (type === 'admin') {
         // For admin sign-ups, we need to check if there are existing admins
@@ -62,12 +65,29 @@ export function SignUpForm({ className, type = 'user', ...props }: SignUpFormPro
         const { error: roleError } = await supabase
           .from('user_roles')
           .update({ role: 'admin' })
-          .eq('id', data.user?.id)
+          .eq('id', signUpData.user.id)
 
         if (roleError) throw roleError
-      }
 
-      router.push('/auth/sign-up-success')
+        // Sign in the user after successful admin signup
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
+        if (signInError) throw signInError
+
+        router.push('/admin/dashboard')
+      } else {
+        // For regular users, the trigger will automatically create the user role
+        // Sign in the user after successful signup
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
+        if (signInError) throw signInError
+
+        router.push('/dashboard')
+      }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'An error occurred')
     } finally {
