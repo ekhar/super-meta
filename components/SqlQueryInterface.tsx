@@ -4,15 +4,16 @@ import { useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { createClient } from '@/utils/supabase/client'
 
-interface SqlQueryInterfaceProps {
-  dbName: string
-  onQueryComplete?: () => void
+interface QueryResult {
+  query: string;
+  results: Record<string, any>[];
+  rowsAffected?: number;
+  lastInsertId?: number | null;
 }
 
-interface QueryResult {
-  rowsAffected?: number
-  lastInsertId?: number
-  [key: string]: any
+interface SqlQueryInterfaceProps {
+  dbName: string;
+  onQueryComplete?: () => void;
 }
 
 export default function SqlQueryInterface({ dbName, onQueryComplete }: SqlQueryInterfaceProps) {
@@ -116,29 +117,66 @@ export default function SqlQueryInterface({ dbName, onQueryComplete }: SqlQueryI
       )}
 
       {results && (
-        <div className="overflow-x-auto">
-          <table className="w-full bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-            <thead className="bg-gray-50 dark:bg-gray-700">
-              <tr>
-                {Object.keys(results[0] || {}).map((key) => (
-                  <th key={key} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    {key}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
-              {results.map((row, i) => (
-                <tr key={i}>
-                  {Object.values(row).map((value: any, j) => (
-                    <td key={j} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-4">
+          {results.map((result, resultIndex) => (
+            <div key={resultIndex} className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+              {/* Query metadata section */}
+              <div className="px-6 py-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                <div className="text-sm text-gray-500 dark:text-gray-300 font-mono">{result.query}</div>
+                <div className="mt-2 flex gap-4 text-sm">
+                  {typeof result.rowsAffected === 'number' && result.rowsAffected > 0 && (
+                    <span className="text-green-600 dark:text-green-400">
+                      {result.rowsAffected} row{result.rowsAffected !== 1 ? 's' : ''} affected
+                    </span>
+                  )}
+                  {result.lastInsertId !== null && (
+                    <span className="text-blue-600 dark:text-blue-400">
+                      Last insert ID: {result.lastInsertId}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Results table section */}
+              {result.results && result.results.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 dark:bg-gray-700">
+                      <tr>
+                        {Object.keys(result.results[0]).map((key) => (
+                          <th key={key} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                            {key}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+                      {result.results.map((row, rowIndex) => (
+                        <tr key={rowIndex} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                          {Object.values(row).map((value: any, colIndex) => (
+                            <td key={colIndex} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                              {value === null ? (
+                                <span className="text-gray-400 dark:text-gray-500 italic">NULL</span>
+                              ) : typeof value === 'object' ? (
+                                <pre className="font-mono text-xs">{JSON.stringify(value, null, 2)}</pre>
+                              ) : String(value)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
+                      <tr>
+                        <td colSpan={Object.keys(result.results[0]).length} className="px-6 py-3 text-sm text-gray-500 dark:text-gray-300">
+                          {result.results.length} row{result.results.length !== 1 ? 's' : ''} returned
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
