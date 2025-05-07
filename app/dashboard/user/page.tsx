@@ -79,7 +79,14 @@ export default async function UserDashboardPage() {
             <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
               {dbStats?.map((db) => (
                 <tr key={db.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">{db.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <a 
+                      href={`/dashboard/user/${db.name}`}
+                      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                      {db.name}
+                    </a>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                     {((db.storage_size_bytes || 0) / 1024 / 1024).toFixed(2)} MB
                   </td>
