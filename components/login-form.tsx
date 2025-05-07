@@ -16,7 +16,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
-export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) {
+interface LoginFormProps extends React.ComponentPropsWithoutRef<'div'> {
+  type?: 'admin' | 'user'
+}
+
+export function LoginForm({ className, type = 'user', ...props }: LoginFormProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -30,13 +34,35 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
     setError(null)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
-      if (error) throw error
-      // Update this route to redirect to an authenticated route. The user already has an active session.
-      router.push('/protected')
+      if (signInError) throw signInError
+
+      // Get user role after successful login
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('No session after login')
+
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single()
+
+      if (roleError) throw roleError
+
+      // Check if user has the correct role type
+      if (type === 'admin' && roleData?.role !== 'admin') {
+        throw new Error('Access denied. Admin privileges required.')
+      }
+
+      // Redirect based on role
+      if (roleData?.role === 'admin') {
+        router.push('/admin/dashboard')
+      } else {
+        router.push('/dashboard')
+      }
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'An error occurred')
     } finally {
@@ -44,12 +70,17 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
     }
   }
 
+  const title = type === 'admin' ? 'Admin Login' : 'Login'
+  const description = type === 'admin' 
+    ? 'Enter your admin credentials to access the management console'
+    : 'Enter your email below to login to your account'
+
   return (
     <div className={cn('flex flex-col gap-6', className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Login</CardTitle>
-          <CardDescription>Enter your email below to login to your account</CardDescription>
+          <CardTitle className="text-2xl">{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin}>
@@ -85,12 +116,15 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Logging in...' : 'Login'}
+                {isLoading ? 'Logging in...' : title}
               </Button>
             </div>
             <div className="mt-4 text-center text-sm">
               Don&apos;t have an account?{' '}
-              <Link href="/auth/sign-up" className="underline underline-offset-4">
+              <Link 
+                href={type === 'admin' ? "/auth/admin/sign-up" : "/auth/user/sign-up"} 
+                className="underline underline-offset-4"
+              >
                 Sign up
               </Link>
             </div>

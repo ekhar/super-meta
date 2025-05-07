@@ -16,10 +16,14 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
-export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) {
+interface SignUpFormProps extends React.ComponentPropsWithoutRef<'div'> {
+  type?: 'admin' | 'user'
+}
+
+export function SignUpForm({ className, type = 'user', ...props }: SignUpFormProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [repeatPassword, setRepeatPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
@@ -30,21 +34,39 @@ export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutR
     setIsLoading(true)
     setError(null)
 
-    if (password !== repeatPassword) {
+    if (password !== confirmPassword) {
       setError('Passwords do not match')
       setIsLoading(false)
       return
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { error: signUpError, data } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/protected`,
-        },
       })
-      if (error) throw error
+      if (signUpError) throw signUpError
+
+      if (type === 'admin') {
+        // For admin sign-ups, we need to check if there are existing admins
+        const { data: adminCount } = await supabase
+          .from('user_roles')
+          .select('id')
+          .eq('role', 'admin')
+
+        if (adminCount && adminCount.length > 0) {
+          throw new Error('Admin account already exists. Please contact support.')
+        }
+
+        // Set as first admin
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .update({ role: 'admin' })
+          .eq('id', data.user?.id)
+
+        if (roleError) throw roleError
+      }
+
       router.push('/auth/sign-up-success')
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'An error occurred')
@@ -53,12 +75,17 @@ export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutR
     }
   }
 
+  const title = type === 'admin' ? 'Create Admin Account' : 'Create Account'
+  const description = type === 'admin'
+    ? 'Set up your admin account to manage the platform'
+    : 'Enter your details below to create your account'
+
   return (
     <div className={cn('flex flex-col gap-6', className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle className="text-2xl">Sign up</CardTitle>
-          <CardDescription>Create a new account</CardDescription>
+          <CardTitle className="text-2xl">{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSignUp}>
@@ -75,9 +102,7 @@ export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutR
                 />
               </div>
               <div className="grid gap-2">
-                <div className="flex items-center">
-                  <Label htmlFor="password">Password</Label>
-                </div>
+                <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
                   type="password"
@@ -87,26 +112,27 @@ export function SignUpForm({ className, ...props }: React.ComponentPropsWithoutR
                 />
               </div>
               <div className="grid gap-2">
-                <div className="flex items-center">
-                  <Label htmlFor="repeat-password">Repeat Password</Label>
-                </div>
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
                 <Input
-                  id="repeat-password"
+                  id="confirmPassword"
                   type="password"
                   required
-                  value={repeatPassword}
-                  onChange={(e) => setRepeatPassword(e.target.value)}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Creating an account...' : 'Sign up'}
+                {isLoading ? 'Creating account...' : title}
               </Button>
             </div>
             <div className="mt-4 text-center text-sm">
               Already have an account?{' '}
-              <Link href="/auth/login" className="underline underline-offset-4">
-                Login
+              <Link 
+                href={type === 'admin' ? "/auth/admin" : "/auth/user"} 
+                className="underline underline-offset-4"
+              >
+                Sign in
               </Link>
             </div>
           </form>

@@ -1,8 +1,8 @@
-import { LoginForm } from '@/components/login-form'
+import { SignUpForm } from '@/components/sign-up-form'
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 
-export default async function LoginPage() {
+export default async function AdminSignUpPage() {
   const supabase = await createClient()
 
   // Check if user is already logged in
@@ -16,7 +16,7 @@ export default async function LoginPage() {
       .eq('id', session.user.id)
       .single()
 
-    // Redirect based on role
+    // If admin, redirect to admin dashboard, otherwise to user dashboard
     if (roleData?.role === 'admin') {
       redirect('/admin/dashboard')
     } else {
@@ -41,21 +41,21 @@ export default async function LoginPage() {
           >
             <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
           </svg>
-          Super Meta
+          Super Meta Admin
         </div>
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">
             <p className="text-lg">
-              Your personal database management platform
+              Create your admin account to manage the platform
             </p>
           </blockquote>
         </div>
       </div>
       <div className="p-8">
         <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
-          <LoginForm />
+          <SignUpForm type="admin" />
         </div>
       </div>
     </div>
   )
-}
+} 

@@ -2,7 +2,7 @@ import { LoginForm } from '@/components/login-form'
 import { createClient } from '@/utils/supabase/server'
 import { redirect } from 'next/navigation'
 
-export default async function LoginPage() {
+export default async function UserLoginPage() {
   const supabase = await createClient()
 
   // Check if user is already logged in
@@ -16,7 +16,7 @@ export default async function LoginPage() {
       .eq('id', session.user.id)
       .single()
 
-    // Redirect based on role
+    // If admin, redirect to admin dashboard, otherwise to user dashboard
     if (roleData?.role === 'admin') {
       redirect('/admin/dashboard')
     } else {
@@ -46,16 +46,16 @@ export default async function LoginPage() {
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">
             <p className="text-lg">
-              Your personal database management platform
+              Your Personal Database Management Platform
             </p>
           </blockquote>
         </div>
       </div>
       <div className="p-8">
         <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
-          <LoginForm />
+          <LoginForm type="user" />
         </div>
       </div>
     </div>
   )
-}
+} 
