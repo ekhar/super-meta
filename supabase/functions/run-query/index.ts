@@ -108,12 +108,15 @@ Deno.serve(async (req) => {
       throw new Error(`Error downloading database: ${downloadError.message}`);
     }
 
-    // Initialize SQL.js
-    const SQL = await initSqlJs();
-    
-    // Create a database instance and load the file content
+    // Save to tmp directory first
+    const tmpDbPath = `/tmp/${dbName}_${crypto.randomUUID()}.db`;
     const uint8Array = new Uint8Array(await dbFile.arrayBuffer());
-    const db = new SQL.Database(uint8Array);
+    await Deno.writeFile(tmpDbPath, uint8Array);
+
+    // Initialize SQL.js and create database from tmp file
+    const SQL = await initSqlJs();
+    const fileBuffer = await Deno.readFile(tmpDbPath);
+    const db = new SQL.Database(fileBuffer);
 
     try {
       // Split the SQL into separate statements
@@ -127,7 +130,10 @@ Deno.serve(async (req) => {
         const trimmedStmt = statement.trim();
         if (!trimmedStmt) continue;
 
-        if (trimmedStmt.toLowerCase().startsWith('select')) {
+        const isSelect = trimmedStmt.toLowerCase().startsWith('select');
+        const isDDL = /^(create|alter|drop)\s+/i.test(trimmedStmt);
+
+        if (isSelect) {
           // For SELECT queries, return the results
           const stmt = db.prepare(trimmedStmt);
           const queryResults: QueryResult[] = [];
@@ -137,13 +143,32 @@ Deno.serve(async (req) => {
           stmt.free();
           results = queryResults;
         } else {
-          // For other queries (INSERT, UPDATE, DELETE), execute and count affected rows
+          // For other queries (INSERT, UPDATE, DELETE, DDL), execute and get results
           try {
             db.run(trimmedStmt);
-            const changes = db.exec("SELECT changes(), last_insert_rowid()")[0];
-            if (changes && changes.values[0]) {
-              totalRowsAffected += changes.values[0][0] as number;
-              lastInsertId = changes.values[0][1] as number;
+            
+            // For DDL statements, verify the changes
+            if (isDDL) {
+              // Check if table exists after CREATE TABLE
+              if (trimmedStmt.toLowerCase().includes('create table')) {
+                const tableName = trimmedStmt.match(/create\s+table\s+(\w+)/i)?.[1];
+                if (tableName) {
+                  const tableCheck = db.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='${tableName}'`);
+                  if (tableCheck && tableCheck.length > 0 && tableCheck[0].values.length > 0) {
+                    totalRowsAffected = 1; // Indicate success for DDL
+                    console.log(`Table ${tableName} was created successfully`);
+                  }
+                }
+              } else {
+                totalRowsAffected = 1; // Indicate success for other DDL
+              }
+            } else {
+              // For DML statements, get affected rows
+              const changes = db.exec("SELECT changes(), last_insert_rowid()")[0];
+              if (changes && changes.values[0]) {
+                totalRowsAffected += changes.values[0][0] as number;
+                lastInsertId = changes.values[0][1] as number;
+              }
             }
           } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -152,14 +177,25 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Get the modified database content
+      // Export the database to a new file in tmp
       const updatedDbContent = db.export();
+      const updatedTmpPath = `/tmp/${dbName}_updated_${crypto.randomUUID()}.db`;
+      await Deno.writeFile(updatedTmpPath, updatedDbContent);
 
+      // Verify the file exists and has content
+      const stats = await Deno.stat(updatedTmpPath);
+      if (stats.size === 0) {
+        throw new Error('Database export failed - got empty file');
+      }
+
+      // Read the file back and upload to storage
+      const finalContent = await Deno.readFile(updatedTmpPath);
+      
       // Upload the modified database back to storage
       const { error: uploadError } = await supabaseClient
         .storage
         .from('sqlite-dbs')
-        .upload(storagePath, updatedDbContent, {
+        .upload(storagePath, finalContent, {
           contentType: 'application/x-sqlite3',
           upsert: true
         });
@@ -168,11 +204,19 @@ Deno.serve(async (req) => {
         throw new Error(`Error uploading database: ${uploadError.message}`);
       }
 
+      // Clean up tmp files
+      try {
+        await Deno.remove(tmpDbPath);
+        await Deno.remove(updatedTmpPath);
+      } catch (e) {
+        console.error('Error cleaning up tmp files:', e);
+      }
+
       // Update database record with new size
       await supabaseClient
         .from('databases')
         .update({
-          storage_size_bytes: updatedDbContent.length,
+          storage_size_bytes: finalContent.length,
           last_accessed: new Date().toISOString()
         })
         .eq('owner_id', user.id)
