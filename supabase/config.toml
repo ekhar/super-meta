@@ -320,7 +320,7 @@ entrypoint = "./functions/hello-world/index.ts"
 
 [functions.api-query]
 enabled = true
-verify_jwt = true
+verify_jwt = false 
 import_map = "./functions/api-query/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
