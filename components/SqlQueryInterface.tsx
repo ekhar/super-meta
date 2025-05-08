@@ -60,7 +60,7 @@ export default function SqlQueryInterface({ dbName, onQueryComplete }: SqlQueryI
         throw new Error(data.error || 'Failed to run query')
       }
 
-      setResults(Array.isArray(data.data) ? data.data : [data.data])
+      setResults(data.results || [])
       
       // Call the onQueryComplete callback after successful query execution
       if (onQueryComplete) {
