@@ -1,8 +1,8 @@
 import axios from 'axios';
 import type { ChessOpening } from '../types/chess';
 
-const API_URL = 'http://127.0.0.1:54321/functions/v1/api-query/9a60fbc2dfb5';
-const API_KEY = 'h41YJj4YqlE3pC86tQOJcITFL0bp4Ks';
+const API_URL = import.meta.env.VITE_API_URL;
+const API_KEY = import.meta.env.VITE_API_KEY;
 
 // Helper function to escape single quotes in SQL strings
 function escapeSqlString(str: string): string {

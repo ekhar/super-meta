@@ -2,9 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 import axios, { AxiosError } from 'axios';
-
-const API_URL = 'http://127.0.0.1:54321/functions/v1/api-query/9a60fbc2dfb5';
-const API_KEY = 'h41YJj4YqlE3pC86tQOJcITFL0bp4Ks';
+import { config } from './config';
 
 interface ChessOpening {
   eco_code: string;
@@ -27,13 +25,13 @@ async function createTableIfNotExists() {
   `;
 
   try {
-    await axios.post(API_URL, {
+    await axios.post(config.API_URL, {
       sql: createTableSQL,
       params: []
     }, {
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
+        'Authorization': `Bearer ${config.API_KEY}`
       }
     });
     console.log('Table created or already exists');
@@ -72,24 +70,24 @@ async function insertOpening(opening: ChessOpening) {
     console.log('\nSQL:', insertSQL);
 
     // Delete existing record if any
-    await axios.post(API_URL, {
+    await axios.post(config.API_URL, {
       sql: deleteSQL,
       params: []
     }, {
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
+        'Authorization': `Bearer ${config.API_KEY}`
       }
     });
 
     // Insert new record
-    const response = await axios.post(API_URL, {
+    const response = await axios.post(config.API_URL, {
       sql: insertSQL,
       params: []
     }, {
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
+        'Authorization': `Bearer ${config.API_KEY}`
       }
     });
     

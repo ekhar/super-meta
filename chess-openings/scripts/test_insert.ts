@@ -1,7 +1,5 @@
 import axios from 'axios';
-
-const API_URL = 'http://127.0.0.1:54321/functions/v1/api-query/9a60fbc2dfb5';
-const API_KEY = 'h41YJj4YqlE3pC86tQOJcITFL0bp4Ks';
+import { config } from './config';
 
 async function testInsert() {
   try {
@@ -11,13 +9,13 @@ async function testInsert() {
     `;
     
     console.log('Checking table structure...');
-    const tableResponse = await axios.post(API_URL, {
+    const tableResponse = await axios.post(config.API_URL, {
       sql: checkTableSQL,
       params: []
     }, {
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
+        'Authorization': `Bearer ${config.API_KEY}`
       }
     });
     
@@ -30,13 +28,13 @@ async function testInsert() {
     `;
     
     console.log('\nTrying simple insert...');
-    const insertResponse = await axios.post(API_URL, {
+    const insertResponse = await axios.post(config.API_URL, {
       sql: insertSQL,
       params: []
     }, {
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
+        'Authorization': `Bearer ${config.API_KEY}`
       }
     });
     

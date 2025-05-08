@@ -16,6 +16,7 @@
     "axios": "^1.6.7",
     "chess.js": "^1.2.0",
     "csv-parse": "^5.5.3",
+    "dotenv": "^16.5.0",
     "react": "^19.1.0",
     "react-chessboard": "^4.7.3",
     "react-dom": "^19.1.0"
