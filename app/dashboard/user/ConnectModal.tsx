@@ -60,10 +60,9 @@ export function ConnectModal({ isOpen, onClose, databaseId, projectUrl }: Connec
 
   const getCurlCommand = () => {
     if (!apiKeys) return ''
-    const apiBaseUrl = `${projectUrl}/functions/v1/api-query`
+    const apiBaseUrl = `${projectUrl}/functions/v1/api-query/${apiKeys.read_slug}`
     return `curl -X POST '${apiBaseUrl}' \\
   -H 'Content-Type: application/json' \\
-  -H 'Authorization: Bearer ${apiKeys.read_key}' \\
   -d '{
     "sql": "SELECT * FROM your_table",
     "params": []

@@ -24,6 +24,12 @@ interface SqlResult {
   values: any[][]
 }
 
+interface DatabaseRecord {
+  id: string
+  name: string
+  owner_id: string
+}
+
 console.log("Hello from Functions!")
 
 serve(async (req) => {
@@ -69,7 +75,7 @@ serve(async (req) => {
 
       if (slugError || !slugData) {
         return new Response(
-          JSON.stringify({ error: 'Invalid database URL' }),
+          JSON.stringify({ error: `Invalid database URL: ${slug}` }),
           { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
@@ -99,15 +105,30 @@ serve(async (req) => {
       )
     }
 
-    // Get the database file from storage
-    const { data: dbFile, error: dbError } = await supabase
-      .storage
-      .from('sqlite-db')
-      .download(`${databaseId}.db`)
+    // Get database record to get owner_id and name
+    const { data: dbRecord, error: dbError } = await supabase
+      .from('databases')
+      .select('id, name, owner_id')
+      .eq('id', databaseId)
+      .single<DatabaseRecord>()
 
-    if (dbError) {
+    if (dbError || !dbRecord) {
       return new Response(
         JSON.stringify({ error: 'Database not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Get the database file from storage using owner_id/name.db pattern
+    const storagePath = `${dbRecord.owner_id}/${dbRecord.name}.db`
+    const { data: dbFile, error: storageError } = await supabase
+      .storage
+      .from('sqlite-dbs')
+      .download(storagePath)
+
+    if (storageError) {
+      return new Response(
+        JSON.stringify({ error: 'Database file not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
