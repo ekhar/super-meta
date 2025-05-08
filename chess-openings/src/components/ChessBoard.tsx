@@ -7,17 +7,29 @@ interface ChessBoardProps {
 }
 
 export function ChessBoard({ onPositionChange }: ChessBoardProps) {
-  const [game, setGame] = useState(new Chess());
+  const [game] = useState(new Chess());
   const [currentOpening, setCurrentOpening] = useState<string | null>(null);
+  const [pgn, setPgn] = useState<string>('');
+  const [moveHistory, setMoveHistory] = useState<string[]>([]);
+
+  const formatMoves = (moves: string[]) => {
+    return moves.reduce((acc, move, index) => {
+      if (index % 2 === 0) {
+        return acc + `${Math.floor(index / 2) + 1}. ${move}${index + 1 < moves.length ? ' ' : ''}`;
+      }
+      return acc + `${move} `;
+    }, '').trim();
+  };
 
   const makeMove = useCallback((move: { from: string; to: string; promotion?: string }) => {
     try {
-      const newGame = new Chess(game.fen());
-      const result = newGame.move(move);
+      const result = game.move(move);
       
       if (result) {
-        setGame(newGame);
-        onPositionChange?.(newGame.fen());
+        const newHistory = game.history();
+        setMoveHistory(newHistory);
+        setPgn(formatMoves(newHistory));
+        onPositionChange?.(game.fen());
         return true;
       }
     } catch (e) {
@@ -35,18 +47,12 @@ export function ChessBoard({ onPositionChange }: ChessBoardProps) {
   }, [makeMove]);
 
   const resetBoard = useCallback(() => {
-    const newGame = new Chess();
-    setGame(newGame);
-    onPositionChange?.(newGame.fen());
+    game.reset();
+    setMoveHistory([]);
+    setPgn('');
+    onPositionChange?.(game.fen());
     setCurrentOpening(null);
-  }, [onPositionChange]);
-
-  useEffect(() => {
-    // This will be replaced with actual API call to your database
-    const moves = game.history().join(' ');
-    console.log('Current moves:', moves);
-    // TODO: Add API call to get opening
-  }, [game]);
+  }, [game, onPositionChange]);
 
   return (
     <div className="chess-board-container">
@@ -64,6 +70,24 @@ export function ChessBoard({ onPositionChange }: ChessBoardProps) {
             Opening: {currentOpening}
           </div>
         )}
+        <div className="pgn-display" style={{ 
+          marginTop: '1rem', 
+          padding: '1rem', 
+          backgroundColor: '#f5f5f5',
+          color: '#333',
+          borderRadius: '4px',
+          fontFamily: 'monospace',
+          whiteSpace: 'pre-wrap',
+          textAlign: 'left',
+          maxWidth: '500px',
+          margin: '1rem auto',
+          border: '1px solid #ddd',
+          fontSize: '14px',
+          lineHeight: '1.6',
+          letterSpacing: '0.5px'
+        }}>
+          {pgn || 'Game start'}
+        </div>
       </div>
     </div>
   );
