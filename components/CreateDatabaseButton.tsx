@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
+import { getFunctionsUrl } from '@/utils/functions'
 
 export default function CreateDatabaseButton() {
   const [isLoading, setIsLoading] = useState(false)
@@ -26,7 +27,7 @@ export default function CreateDatabaseButton() {
         throw new Error('Not authenticated')
       }
 
-      const response = await fetch('http://127.0.0.1:54321/functions/v1/create-db', {
+      const response = await fetch(getFunctionsUrl('create-db'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

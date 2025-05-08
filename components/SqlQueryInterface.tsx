@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Editor from '@monaco-editor/react'
 import { createClient } from '@/utils/supabase/client'
+import { getFunctionsUrl } from '@/utils/functions'
 
 interface QueryResult {
   query: string;
@@ -41,7 +42,7 @@ export default function SqlQueryInterface({ dbName, onQueryComplete }: SqlQueryI
         throw new Error('Not authenticated')
       }
 
-      const response = await fetch('http://127.0.0.1:54321/functions/v1/run-query', {
+      const response = await fetch(getFunctionsUrl('run-query'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

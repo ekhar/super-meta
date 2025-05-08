@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
+import { getFunctionsUrl } from '@/utils/functions'
 
 interface Column {
   name: string
@@ -36,7 +37,7 @@ export default function TablePreview({ dbName, refreshTrigger = 0 }: TablePrevie
         throw new Error('Not authenticated')
       }
 
-      const response = await fetch('http://127.0.0.1:54321/functions/v1/get-tables', {
+      const response = await fetch(getFunctionsUrl('get-tables'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

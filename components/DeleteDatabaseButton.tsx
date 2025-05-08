@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
+import { getFunctionsUrl } from '@/utils/functions'
 
 interface DeleteDatabaseButtonProps {
   dbName: string
@@ -25,7 +26,7 @@ export default function DeleteDatabaseButton({ dbName, onDelete }: DeleteDatabas
         throw new Error('Not authenticated')
       }
 
-      const response = await fetch('http://127.0.0.1:54321/functions/v1/delete-db', {
+      const response = await fetch(getFunctionsUrl('delete-db'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
