@@ -4,7 +4,6 @@ import { createClient } from '@/utils/supabase/client'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { CopyIcon, CheckIcon } from '@radix-ui/react-icons'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface ConnectModalProps {
   isOpen: boolean
@@ -59,22 +58,14 @@ export function ConnectModal({ isOpen, onClose, databaseId, projectUrl }: Connec
     }
   }
 
-  const getReadCurlCommand = () => {
+  const getApiUrl = () => {
     if (!apiKeys) return ''
-    const apiBaseUrl = `${projectUrl}/functions/v1/api-query/${apiKeys.read_slug}`
-    return `curl -X GET '${apiBaseUrl}' \\
-  -H 'Content-Type: application/json' \\
-  -H 'Authorization: Bearer ${apiKeys.read_key}' \\
-  -d '{
-    "sql": "SELECT * FROM your_table",
-    "params": []
-  }'`
+    return `${projectUrl}/functions/v1/api-query/${apiKeys.write_slug}`
   }
 
-  const getWriteCurlCommand = () => {
+  const getCurlCommand = () => {
     if (!apiKeys) return ''
-    const apiBaseUrl = `${projectUrl}/functions/v1/api-query/${apiKeys.write_slug}`
-    return `curl -X POST '${apiBaseUrl}' \\
+    return `curl -X POST '${getApiUrl()}' \\
   -H 'Content-Type: application/json' \\
   -H 'Authorization: Bearer ${apiKeys.write_key}' \\
   -d '{
@@ -82,6 +73,48 @@ export function ConnectModal({ isOpen, onClose, databaseId, projectUrl }: Connec
     "params": ["value1", "value2"]
   }'`
   }
+
+  const getFetchCommand = () => {
+    if (!apiKeys) return ''
+    return `const response = await fetch('${getApiUrl()}', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ${apiKeys.write_key}'
+  },
+  body: JSON.stringify({
+    sql: 'INSERT INTO your_table (column1, column2) VALUES ($1, $2)',
+    params: ['value1', 'value2']
+  })
+})`
+  }
+
+  const getAxiosCommand = () => {
+    if (!apiKeys) return ''
+    return `const response = await axios.post('${getApiUrl()}', {
+  sql: 'INSERT INTO your_table (column1, column2) VALUES ($1, $2)',
+  params: ['value1', 'value2']
+}, {
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ${apiKeys.write_key}'
+  }
+})`
+  }
+
+  const CopyButton = ({ text, fieldId }: { text: string; fieldId: string }) => (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => copyToClipboard(text, fieldId)}
+    >
+      {copiedField === fieldId ? (
+        <CheckIcon className="h-4 w-4" />
+      ) : (
+        <CopyIcon className="h-4 w-4" />
+      )}
+    </Button>
+  )
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -97,96 +130,73 @@ export function ConnectModal({ isOpen, onClose, databaseId, projectUrl }: Connec
               No API keys found for this database
             </div>
           ) : (
-            <Tabs defaultValue="read" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="read">Read-Only Access</TabsTrigger>
-                <TabsTrigger value="write">Read-Write Access</TabsTrigger>
-              </TabsList>
-              <TabsContent value="read">
-                <Card className="p-4">
-                  <div className="space-y-4">
+            <div className="space-y-6">
+              {/* API URL Section */}
+              <Card className="p-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-semibold text-lg">API URL</h3>
+                    <CopyButton text={getApiUrl()} fieldId="api-url" />
+                  </div>
+                  <pre className="bg-muted p-3 rounded-lg overflow-x-auto text-sm">
+                    {getApiUrl()}
+                  </pre>
+                </div>
+              </Card>
+
+              {/* API Key Section */}
+              <Card className="p-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-semibold text-lg">API Key</h3>
+                    <CopyButton text={apiKeys.write_key} fieldId="api-key" />
+                  </div>
+                  <pre className="bg-muted p-3 rounded-lg overflow-x-auto text-sm">
+                    {apiKeys.write_key}
+                  </pre>
+                </div>
+              </Card>
+
+              {/* Code Examples Section */}
+              <Card className="p-4">
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg">Code Examples</h3>
+
+                  {/* cURL Example */}
+                  <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <h3 className="font-semibold text-lg">Read-Only API Key</h3>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => copyToClipboard(apiKeys.read_key, 'read-key')}
-                      >
-                        {copiedField === 'read-key' ? (
-                          <CheckIcon className="h-4 w-4" />
-                        ) : (
-                          <CopyIcon className="h-4 w-4" />
-                        )}
-                      </Button>
+                      <p className="text-sm font-medium">cURL</p>
+                      <CopyButton text={getCurlCommand()} fieldId="curl" />
                     </div>
                     <pre className="bg-muted p-3 rounded-lg overflow-x-auto text-sm">
-                      {apiKeys.read_key}
+                      {getCurlCommand()}
                     </pre>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <p className="text-sm text-muted-foreground">Example Query:</p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyToClipboard(getReadCurlCommand(), 'read-curl')}
-                        >
-                          {copiedField === 'read-curl' ? (
-                            <CheckIcon className="h-4 w-4" />
-                          ) : (
-                            <CopyIcon className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                      <pre className="bg-muted p-3 rounded-lg overflow-x-auto text-sm">
-                        {getReadCurlCommand()}
-                      </pre>
-                    </div>
                   </div>
-                </Card>
-              </TabsContent>
-              <TabsContent value="write">
-                <Card className="p-4">
-                  <div className="space-y-4">
+
+                  {/* Fetch Example */}
+                  <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <h3 className="font-semibold text-lg">Read-Write API Key</h3>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => copyToClipboard(apiKeys.write_key, 'write-key')}
-                      >
-                        {copiedField === 'write-key' ? (
-                          <CheckIcon className="h-4 w-4" />
-                        ) : (
-                          <CopyIcon className="h-4 w-4" />
-                        )}
-                      </Button>
+                      <p className="text-sm font-medium">JavaScript (Fetch)</p>
+                      <CopyButton text={getFetchCommand()} fieldId="fetch" />
                     </div>
                     <pre className="bg-muted p-3 rounded-lg overflow-x-auto text-sm">
-                      {apiKeys.write_key}
+                      {getFetchCommand()}
                     </pre>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <p className="text-sm text-muted-foreground">Example Query:</p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyToClipboard(getWriteCurlCommand(), 'write-curl')}
-                        >
-                          {copiedField === 'write-curl' ? (
-                            <CheckIcon className="h-4 w-4" />
-                          ) : (
-                            <CopyIcon className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                      <pre className="bg-muted p-3 rounded-lg overflow-x-auto text-sm">
-                        {getWriteCurlCommand()}
-                      </pre>
-                    </div>
                   </div>
-                </Card>
-              </TabsContent>
-            </Tabs>
+
+                  {/* Axios Example */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm font-medium">JavaScript (Axios)</p>
+                      <CopyButton text={getAxiosCommand()} fieldId="axios" />
+                    </div>
+                    <pre className="bg-muted p-3 rounded-lg overflow-x-auto text-sm">
+                      {getAxiosCommand()}
+                    </pre>
+                  </div>
+                </div>
+              </Card>
+            </div>
           )}
         </div>
       </DialogContent>
