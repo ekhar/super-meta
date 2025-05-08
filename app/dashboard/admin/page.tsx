@@ -6,6 +6,15 @@ type UserWithRole = Database['public']['Tables']['user_roles']['Row'] & {
   email: string
 }
 
+type UserMetrics = {
+  user_id: string
+  total_api_requests: number
+  total_read_bytes: number
+  total_write_bytes: number
+  total_egress_bytes: number
+  last_updated_at: string
+}
+
 export default async function AdminDashboardPage() {
   const supabase = await createClient()
   const { data, error } = await supabase.auth.getUser()
@@ -45,10 +54,24 @@ export default async function AdminDashboardPage() {
     console.error('Error fetching databases:', dbError)
   }
 
+  // Get all user metrics
+  const { data: allMetrics, error: metricsError } = await supabase
+    .from('user_metrics')
+    .select('*')
+    .order('total_api_requests', { ascending: false }) as { data: UserMetrics[] | null, error: any }
+
+  if (metricsError) {
+    console.error('Error fetching metrics:', metricsError)
+  }
+
   const totalUsers = allUsers?.length || 0
   const totalAdmins = allUsers?.filter(u => u.role === 'admin').length || 0
   const totalDatabases = allDatabases?.length || 0
   const totalStorageUsed = allDatabases?.reduce((acc, db) => acc + (db.storage_size_bytes || 0), 0) || 0
+  const totalApiRequests = allMetrics?.reduce((acc, m) => acc + m.total_api_requests, 0) || 0
+  const totalReadVolume = allMetrics?.reduce((acc, m) => acc + m.total_read_bytes, 0) || 0
+  const totalWriteVolume = allMetrics?.reduce((acc, m) => acc + m.total_write_bytes, 0) || 0
+  const totalEgressVolume = allMetrics?.reduce((acc, m) => acc + m.total_egress_bytes, 0) || 0
 
   return (
     <div className="container mx-auto py-10">
@@ -73,6 +96,25 @@ export default async function AdminDashboardPage() {
         </div>
       </div>
 
+      <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+          <h2 className="text-xl font-semibold mb-2">Total API Requests</h2>
+          <p className="text-3xl font-bold">{totalApiRequests.toLocaleString()}</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+          <h2 className="text-xl font-semibold mb-2">Total Read Volume</h2>
+          <p className="text-3xl font-bold">{(totalReadVolume / 1024 / 1024).toFixed(2)} MB</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+          <h2 className="text-xl font-semibold mb-2">Total Write Volume</h2>
+          <p className="text-3xl font-bold">{(totalWriteVolume / 1024 / 1024).toFixed(2)} MB</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+          <h2 className="text-xl font-semibold mb-2">Total Egress</h2>
+          <p className="text-3xl font-bold">{(totalEgressVolume / 1024 / 1024).toFixed(2)} MB</p>
+        </div>
+      </div>
+
       <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div>
           <h2 className="text-2xl font-semibold mb-6">Recent Users</h2>
@@ -82,27 +124,40 @@ export default async function AdminDashboardPage() {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Email</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Role</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Joined</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">API Requests</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Data Volume</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
-                {allUsers?.slice(0, 5).map((user) => (
-                  <tr key={user.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {user.email}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        user.role === 'admin' ? 'bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-100' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100'
-                      }`}>
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
+                {allUsers?.slice(0, 5).map((user) => {
+                  const metrics = allMetrics?.find(m => m.user_id === user.id) || {
+                    total_api_requests: 0,
+                    total_read_bytes: 0,
+                    total_write_bytes: 0,
+                    total_egress_bytes: 0
+                  }
+                  const totalVolume = metrics.total_read_bytes + metrics.total_write_bytes + metrics.total_egress_bytes
+                  return (
+                    <tr key={user.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {user.email}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          user.role === 'admin' ? 'bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-100' : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100'
+                        }`}>
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                        {metrics.total_api_requests.toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                        {(totalVolume / 1024 / 1024).toFixed(2)} MB
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

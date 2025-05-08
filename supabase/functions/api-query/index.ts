@@ -9,6 +9,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { default as initSqlJs } from "npm:sql.js@1.9.0"
 import { corsHeaders } from '../_shared/cors.ts'
+import { trackMetrics, getStringSizeInBytes, getObjectSizeInBytes } from "../_shared/metrics.ts"
 
 interface QueryRequest {
   sql: string
@@ -27,6 +28,8 @@ interface DatabaseRecord {
   id: string
   name: string
   owner_id: string
+  storage_size_bytes: number
+  created_at: string
 }
 
 // Split SQL statements while preserving quoted content and comments
@@ -159,7 +162,7 @@ serve(async (req) => {
     // Look up the database ID using the slug
     const { data: slugData, error: slugError } = await supabase
       .from('api_keys')
-      .select('database_id')
+      .select('database_id, owner_id')
       .eq('slug', slug)
       .eq('is_active', true)
       .maybeSingle()
@@ -212,7 +215,7 @@ serve(async (req) => {
     // Get database record to get owner_id and name
     const { data: dbRecord, error: dbError } = await supabase
       .from('databases')
-      .select('id, name, owner_id')
+      .select('id, name, owner_id, storage_size_bytes, created_at')
       .eq('id', databaseId)
       .single<DatabaseRecord>()
 
@@ -240,167 +243,148 @@ serve(async (req) => {
       )
     }
 
-    // Save to tmp directory first
-    const tmpDbPath = `/tmp/${dbRecord.name}_${crypto.randomUUID()}.db`
-    const uint8Array = new Uint8Array(await dbFile.arrayBuffer())
-    await Deno.writeFile(tmpDbPath, uint8Array)
+    // Track download metrics
+    const downloadSize = dbFile.size
+    await trackMetrics(supabase, slugData.owner_id, {
+      readBytes: downloadSize,
+      egressBytes: downloadSize
+    })
 
-    // Parse request body
-    const { sql, params = [] }: QueryRequest = await req.json()
-    if (!sql) {
-      return new Response(
-        JSON.stringify({ error: 'Missing SQL query' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    console.log('Executing SQL query:', { sql, params })
-
-    // Initialize SQL.js and create database from tmp file
-    const SQL = await initSqlJs()
-    const fileBuffer = await Deno.readFile(tmpDbPath)
-    const db = new SQL.Database(fileBuffer)
-
-    try {
-      // Split the SQL into separate statements
-      const statements = splitSqlStatements(sql)
-      let totalRowsAffected = 0
-      let lastInsertId: number | null = null
-      let allResults: { query: string; results: QueryResult[] }[] = []
-
-      // Execute each statement
-      for (const statement of statements) {
-        const trimmedStmt = statement.trim()
-        if (!trimmedStmt) continue
-
-        const isSelect = trimmedStmt.toLowerCase().startsWith('select')
-        const isDDL = /^(create|alter|drop)\s+/i.test(trimmedStmt)
-
-        if (isSelect) {
-          // For SELECT queries, return the results
-          const stmt = db.prepare(trimmedStmt)
-          if (params && params.length > 0) {
-            stmt.bind(params)
-          }
-          const queryResults: QueryResult[] = []
-          while (stmt.step()) {
-            queryResults.push(stmt.getAsObject())
-          }
-          stmt.free()
-          allResults.push({ query: trimmedStmt, results: queryResults })
-        } else {
-          // For other queries (INSERT, UPDATE, DELETE, DDL), execute and get results
-          try {
-            // Special handling for CREATE TABLE IF NOT EXISTS
-            if (trimmedStmt.toLowerCase().includes('create table if not exists')) {
-              // Extract table name and schema
-              const match = trimmedStmt.match(/create\s+table\s+if\s+not\s+exists\s+(\w+)\s*\((.*)\)/i)
-              if (match) {
-                const [, tableName, schema] = match
-                // Check if table exists
-                try {
-                  const checkStmt = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`)
-                  checkStmt.bind([tableName])
-                  const exists = checkStmt.step()
-                  checkStmt.free()
-                  
-                  if (!exists) {
-                    // Table doesn't exist, create it
-                    const createStmt = `CREATE TABLE ${tableName} (${schema})`
-                    db.run(createStmt)
-                  }
-                } catch (e: unknown) {
-                  throw new Error(`Error checking/creating table ${tableName}: ${e instanceof Error ? e.message : String(e)}`)
-                }
-              } else {
-                throw new Error('Invalid CREATE TABLE IF NOT EXISTS syntax')
-              }
-            } else {
-              // Normal execution for other statements with parameter binding
-              const stmt = db.prepare(trimmedStmt)
-              if (params && params.length > 0) {
-                stmt.bind(params)
-              }
-              while (stmt.step()) {} // Execute the statement
-              stmt.free()
-            }
-            
-            // For DDL statements, verify the changes
-            if (isDDL) {
-              // Check if table exists after CREATE TABLE
-              if (trimmedStmt.toLowerCase().includes('create table')) {
-                const tableName = trimmedStmt.match(/create\s+table\s+(?:if\s+not\s+exists\s+)?(\w+)/i)?.[1]
-                if (tableName) {
-                  try {
-                    const verifyStmt = db.prepare(`SELECT * FROM ${tableName} LIMIT 0`)
-                    verifyStmt.free()
-                  } catch (e: unknown) {
-                    throw new Error(`Failed to create table ${tableName}: ${e instanceof Error ? e.message : String(e)}`)
-                  }
-                }
-              }
-            } else {
-              // For DML statements, get affected rows and last insert id
-              totalRowsAffected += db.getRowsModified()
-              const changes = db.exec('SELECT last_insert_rowid() as last_id')
-              if (changes.length > 0 && changes[0].values.length > 0) {
-                lastInsertId = changes[0].values[0][0] as number
-              }
-            }
-          } catch (error: unknown) {
-            throw new Error(`Error executing statement "${trimmedStmt}": ${error instanceof Error ? error.message : String(error)}`)
-          }
-        }
+    // For GET requests, return database info
+    if (req.method === 'GET') {
+      const info = {
+        name: dbRecord.name,
+        size: dbRecord.storage_size_bytes,
+        created_at: dbRecord.created_at
       }
+      
+      // Track GET request metrics
+      await trackMetrics(supabase, slugData.owner_id, {
+        readBytes: getObjectSizeInBytes(info),
+        egressBytes: getObjectSizeInBytes(info)
+      })
 
-      // Save changes back to storage if any modifications were made
-      if (totalRowsAffected > 0 || statements.some(s => /^(create|alter|drop)\s+/i.test(s.trim()))) {
-        const data = db.export()
-        await Deno.writeFile(tmpDbPath, data)
-        
-        const file = await Deno.readFile(tmpDbPath)
-        const { error: uploadError } = await supabase
-          .storage
-          .from('sqlite-dbs')
-          .upload(storagePath, file, {
-            upsert: true,
-            contentType: 'application/x-sqlite3'
-          })
-
-        if (uploadError) {
-          throw new Error(`Failed to save changes: ${uploadError.message}`)
-        }
-      }
-
-      // Return results
       return new Response(
-        JSON.stringify({
-          results: allResults,
-          rowsAffected: totalRowsAffected,
-          lastInsertId: lastInsertId
-        }),
+        JSON.stringify(info),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      return new Response(
-        JSON.stringify({ error: errorMessage }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    } finally {
-      db.close()
-      // Clean up temporary file
+    }
+
+    // For POST requests, execute query
+    if (req.method === 'POST') {
+      const requestData: QueryRequest = await req.json()
+      if (!requestData.sql) {
+        return new Response(
+          JSON.stringify({ error: 'SQL query is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Save to tmp directory
+      const tmpDbPath = `/tmp/${dbRecord.name}_${crypto.randomUUID()}.db`
+      const uint8Array = new Uint8Array(await dbFile.arrayBuffer())
+      await Deno.writeFile(tmpDbPath, uint8Array)
+
+      // Initialize SQL.js
+      const SQL = await initSqlJs()
+      const fileBuffer = await Deno.readFile(tmpDbPath)
+      const db = new SQL.Database(fileBuffer)
+
       try {
+        // Split and execute statements
+        const statements = splitSqlStatements(requestData.sql)
+        let totalReadBytes = 0
+        let totalWriteBytes = 0
+        let allResults: { query: string; results: QueryResult[] }[] = []
+
+        for (const statement of statements) {
+          const trimmedStmt = statement.trim()
+          if (!trimmedStmt) continue
+
+          const isSelect = trimmedStmt.toLowerCase().startsWith('select')
+          const isDDL = /^(create|alter|drop)\s+/i.test(trimmedStmt)
+          const isWrite = !isSelect || isDDL
+
+          // Track statement size
+          const statementSize = getStringSizeInBytes(trimmedStmt)
+          if (isWrite) {
+            totalWriteBytes += statementSize
+          }
+
+          if (isSelect) {
+            const stmt = db.prepare(trimmedStmt)
+            const queryResults: QueryResult[] = []
+            
+            while (stmt.step()) {
+              const result = stmt.getAsObject()
+              queryResults.push(result)
+              totalReadBytes += getObjectSizeInBytes(result)
+            }
+            
+            stmt.free()
+            allResults.push({ query: trimmedStmt, results: queryResults })
+          } else {
+            db.run(trimmedStmt)
+            allResults.push({ query: trimmedStmt, results: [] })
+          }
+        }
+
+        // Get final database state
+        const exportData = db.export()
+        const finalDbSize = exportData.length
+
+        // Upload if there were writes
+        if (totalWriteBytes > 0) {
+          const { error: uploadError } = await supabase
+            .storage
+            .from('sqlite-dbs')
+            .upload(storagePath, exportData, {
+              upsert: true,
+              contentType: 'application/x-sqlite3'
+            })
+
+          if (uploadError) {
+            throw new Error(`Error uploading database: ${uploadError.message}`)
+          }
+
+          // Track upload metrics
+          await trackMetrics(supabase, slugData.owner_id, {
+            writeBytes: finalDbSize
+          })
+        }
+
+        // Track query metrics
+        await trackMetrics(supabase, slugData.owner_id, {
+          readBytes: totalReadBytes,
+          writeBytes: totalWriteBytes,
+          egressBytes: getObjectSizeInBytes(allResults)
+        })
+
+        // Clean up
+        db.close()
         await Deno.remove(tmpDbPath)
-      } catch (e) {
-        console.error('Failed to clean up temporary file:', e)
+
+        return new Response(
+          JSON.stringify({ results: allResults }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (error) {
+        // Clean up on error
+        db.close()
+        await Deno.remove(tmpDbPath)
+        throw error
       }
     }
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
-    console.error('Unhandled error:', error)
+
+    // Method not allowed
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    console.error('Error:', error)
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : 'An unknown error occurred' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

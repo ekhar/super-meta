@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.39.7";
 import { default as initSqlJs } from "npm:sql.js@1.9.0";
+import { trackMetrics, getStringSizeInBytes, getObjectSizeInBytes } from "../_shared/metrics.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -153,6 +154,13 @@ Deno.serve(async (req) => {
       throw new Error(`Error downloading database: ${downloadError.message}`);
     }
 
+    // Track download metrics
+    const downloadSize = dbFile.size;
+    await trackMetrics(supabaseClient, user.id, {
+      readBytes: downloadSize,
+      egressBytes: downloadSize
+    });
+
     // Save to tmp directory first
     const tmpDbPath = `/tmp/${dbName}_${crypto.randomUUID()}.db`;
     const uint8Array = new Uint8Array(await dbFile.arrayBuffer());
@@ -169,6 +177,8 @@ Deno.serve(async (req) => {
       let totalRowsAffected = 0;
       let lastInsertId: number | null = null;
       let allResults: { query: string; results: QueryResult[] }[] = [];
+      let totalReadBytes = 0;
+      let totalWriteBytes = 0;
 
       // Execute each statement
       for (const statement of statements) {
@@ -177,13 +187,22 @@ Deno.serve(async (req) => {
 
         const isSelect = trimmedStmt.toLowerCase().startsWith('select');
         const isDDL = /^(create|alter|drop)\s+/i.test(trimmedStmt);
+        const isWrite = !isSelect || isDDL;
+
+        // Track the SQL statement size
+        const statementSize = getStringSizeInBytes(trimmedStmt);
+        if (isWrite) {
+          totalWriteBytes += statementSize;
+        }
 
         if (isSelect) {
           // For SELECT queries, return the results
           const stmt = db.prepare(trimmedStmt);
           const queryResults: QueryResult[] = [];
           while (stmt.step()) {
-            queryResults.push(stmt.getAsObject());
+            const result = stmt.getAsObject();
+            queryResults.push(result);
+            totalReadBytes += getObjectSizeInBytes(result);
           }
           stmt.free();
           allResults.push({ query: trimmedStmt, results: queryResults });
@@ -215,85 +234,72 @@ Deno.serve(async (req) => {
                 lastInsertId = changes.values[0][1] as number;
               }
             }
-          } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-            throw new Error(`Error executing statement: ${trimmedStmt}\nError: ${errorMessage}`);
+          } catch (error) {
+            console.error(`Error executing statement: ${error}`);
+            throw error;
           }
         }
       }
 
-      // Export the database to a new file in tmp
-      const updatedDbContent = db.export();
-      const updatedTmpPath = `/tmp/${dbName}_updated_${crypto.randomUUID()}.db`;
-      await Deno.writeFile(updatedTmpPath, updatedDbContent);
+      // Get the final database state
+      const exportData = db.export();
+      const finalDbSize = exportData.length;
 
-      // Verify the file exists and has content
-      const stats = await Deno.stat(updatedTmpPath);
-      if (stats.size === 0) {
-        throw new Error('Database export failed - got empty file');
-      }
+      // Write back to storage if there were any write operations
+      if (totalWriteBytes > 0) {
+        const { error: uploadError } = await supabaseClient
+          .storage
+          .from('sqlite-dbs')
+          .upload(storagePath, exportData, {
+            upsert: true,
+            contentType: 'application/x-sqlite3'
+          });
 
-      // Read the file back and upload to storage
-      const finalContent = await Deno.readFile(updatedTmpPath);
-      
-      // Upload the modified database back to storage
-      const { error: uploadError } = await supabaseClient
-        .storage
-        .from('sqlite-dbs')
-        .upload(storagePath, finalContent, {
-          contentType: 'application/x-sqlite3',
-          upsert: true
+        if (uploadError) {
+          throw new Error(`Error uploading database: ${uploadError.message}`);
+        }
+
+        // Track upload metrics
+        await trackMetrics(supabaseClient, user.id, {
+          writeBytes: finalDbSize
         });
-
-      if (uploadError) {
-        throw new Error(`Error uploading database: ${uploadError.message}`);
       }
 
-      // Clean up tmp files
-      try {
-        await Deno.remove(tmpDbPath);
-        await Deno.remove(updatedTmpPath);
-      } catch (e) {
-        console.error('Error cleaning up tmp files:', e);
-      }
+      // Track query metrics
+      await trackMetrics(supabaseClient, user.id, {
+        readBytes: totalReadBytes,
+        writeBytes: totalWriteBytes,
+        egressBytes: getObjectSizeInBytes(allResults)
+      });
 
-      // Update database record with new size
-      await supabaseClient
-        .from('databases')
-        .update({
-          storage_size_bytes: finalContent.length,
-          last_accessed: new Date().toISOString()
-        })
-        .eq('owner_id', user.id)
-        .eq('name', dbName);
+      // Clean up
+      db.close();
+      await Deno.remove(tmpDbPath);
 
-      // Return appropriate results
-      const responseData = {
-        results: allResults,
-        rowsAffected: totalRowsAffected,
-        lastInsertId
-      };
-
+      // Return results
       return new Response(
-        JSON.stringify({ data: responseData }),
-        { 
+        JSON.stringify({
+          results: allResults,
+          rowsAffected: totalRowsAffected,
+          lastInsertId
+        }),
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200
         }
       );
-
-    } finally {
-      // Clean up database instance
+    } catch (error) {
+      // Clean up on error
       db.close();
+      await Deno.remove(tmpDbPath);
+      throw error;
     }
-
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+  } catch (error) {
+    console.error('Error:', error);
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { 
+      JSON.stringify({ error: error.message }),
+      {
+        status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400
       }
     );
   }
