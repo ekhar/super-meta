@@ -39,20 +39,27 @@ serve(async (req) => {
   }
 
   try {
-    // Parse the URL to get the slug if present
+    // Parse the URL to get the slug
     const url = new URL(req.url)
     const pathParts = url.pathname.split('/')
     const slug = pathParts[pathParts.length - 1]
+    console.log('Received request for slug:', slug)
 
-    // Get API key from Authorization header or query param
-    let apiKey: string | undefined = req.headers.get('Authorization')?.replace('Bearer ', '') || undefined
-    if (!apiKey && url.searchParams.has('key')) {
-      apiKey = url.searchParams.get('key') || undefined
-    }
+    // Get API key from Authorization header
+    const apiKey = req.headers.get('Authorization')?.replace('Bearer ', '')
+    console.log('Using API key:', apiKey)
 
-    if (!apiKey && !slug) {
+    // Both slug and API key are required
+    if (!apiKey || !slug) {
+      console.log('Missing required fields:', { apiKey: !!apiKey, slug: !!slug })
       return new Response(
-        JSON.stringify({ error: 'Missing API key or database slug' }),
+        JSON.stringify({ 
+          error: 'Both database slug and bearer token are required',
+          details: {
+            slug: slug ? 'provided' : 'missing',
+            bearer_token: apiKey ? 'provided' : 'missing'
+          }
+        }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -60,50 +67,61 @@ serve(async (req) => {
     // Create Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    console.log('Supabase URL:', supabaseUrl)
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    let databaseId: string | null = null
+    // Look up the database ID using the slug
+    const { data: slugData, error: slugError } = await supabase
+      .from('api_keys')
+      .select('database_id')
+      .eq('slug', slug)
+      .eq('is_active', true)
+      .maybeSingle()
 
-    if (slug) {
-      // Look up the database ID using the slug
-      const { data: slugData, error: slugError } = await supabase
-        .from('api_keys')
-        .select('database_id')
-        .eq('slug', slug)
-        .eq('is_active', true)
-        .maybeSingle()
+    console.log('Slug lookup result:', { slugData, slugError })
 
-      if (slugError || !slugData) {
-        return new Response(
-          JSON.stringify({ error: `Invalid database URL: ${slug}` }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-      databaseId = slugData.database_id
-    } else if (apiKey) {
-      // Verify API key and get database ID
-      const { data, error: verifyError } = await supabase
-        .rpc('verify_api_key', { 
-          api_key: apiKey,
-          required_permission: req.method === 'POST' ? 'write' : 'read'
-        })
-        .single<ApiKeyResponse>()
-
-      if (verifyError || !data?.database_id) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid API key' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-      databaseId = data.database_id
-    }
-
-    if (!databaseId) {
+    if (slugError || !slugData) {
       return new Response(
-        JSON.stringify({ error: 'Could not determine database ID' }),
+        JSON.stringify({ error: `Invalid database URL: ${slug}` }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    // Verify API key and check permissions
+    console.log('Verifying API key with permission:', req.method === 'POST' ? 'write' : 'read')
+    const { data: keyData, error: verifyError } = await supabase
+      .rpc('verify_api_key', { 
+        api_key: apiKey,
+        required_permission: req.method === 'POST' ? 'write' : 'read'
+      })
+      .single<ApiKeyResponse>()
+
+    console.log('API key verification result:', { keyData, verifyError })
+
+    if (verifyError || !keyData?.database_id) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid API key',
+          details: verifyError ? verifyError.message : 'No database ID returned'
+        }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Verify that the slug and API key are for the same database
+    console.log('Comparing database IDs:', { 
+      fromSlug: slugData.database_id, 
+      fromKey: keyData.database_id 
+    })
+    
+    if (slugData.database_id !== keyData.database_id) {
+      return new Response(
+        JSON.stringify({ error: 'API key does not match database slug' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const databaseId = slugData.database_id
 
     // Get database record to get owner_id and name
     const { data: dbRecord, error: dbError } = await supabase
@@ -111,6 +129,8 @@ serve(async (req) => {
       .select('id, name, owner_id')
       .eq('id', databaseId)
       .single<DatabaseRecord>()
+
+    console.log('Database record lookup:', { dbRecord, dbError })
 
     if (dbError || !dbRecord) {
       return new Response(
@@ -121,6 +141,7 @@ serve(async (req) => {
 
     // Get the database file from storage using owner_id/name.db pattern
     const storagePath = `${dbRecord.owner_id}/${dbRecord.name}.db`
+    console.log('Attempting to download from storage:', storagePath)
     const { data: dbFile, error: storageError } = await supabase
       .storage
       .from('sqlite-dbs')
@@ -141,6 +162,8 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    console.log('Executing SQL query:', { sql, params })
 
     // Initialize SQL.js
     const SQL = await initSqlJs()
@@ -169,6 +192,7 @@ serve(async (req) => {
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Internal server error'
+    console.error('Unhandled error:', error)
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

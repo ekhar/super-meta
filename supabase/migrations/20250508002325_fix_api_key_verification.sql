@@ -1,7 +1,34 @@
--- Drop the old function
-drop function if exists public.get_new_api_keys;
+-- Fix schema references for cryptographic functions
+drop function if exists public.crypt;
+drop function if exists public.gen_salt;
+drop function if exists public.verify_api_key;
 
--- Create new function that always returns API keys
+-- Create the verify_api_key function
+create or replace function public.verify_api_key(
+  api_key text,
+  required_permission text default 'read'
+)
+returns table (
+  database_id uuid
+)
+language plpgsql
+security definer
+as $$
+begin
+  return query
+  select ak.database_id
+  from public.api_keys ak
+  where extensions.crypt(api_key, ak.key_hash) = ak.key_hash
+  and ak.is_active = true
+  and (
+    (required_permission = 'read' and (ak.permissions->>'read')::boolean = true)
+    or
+    (required_permission = 'write' and (ak.permissions->>'write')::boolean = true)
+  );
+end;
+$$;
+
+-- Update existing functions to use extensions schema
 create or replace function public.get_api_keys(p_database_id uuid)
 returns table (
   read_key text,
@@ -66,12 +93,12 @@ begin
 
       -- Update existing keys with new hashes
       update public.api_keys
-      set key_hash = public.crypt(v_read_key, public.gen_salt('bf'))
+      set key_hash = extensions.crypt(v_read_key, extensions.gen_salt('bf'))
       where database_id = p_database_id
       and permissions->>'write' = 'false';
 
       update public.api_keys
-      set key_hash = public.crypt(v_write_key, public.gen_salt('bf'))
+      set key_hash = extensions.crypt(v_write_key, extensions.gen_salt('bf'))
       where database_id = p_database_id
       and permissions->>'write' = 'true';
 
@@ -100,5 +127,73 @@ begin
     return query
     select v_read_key, v_write_key, v_read_slug, v_write_slug;
   end;
+end;
+$$;
+
+-- Update create_default_api_keys to use extensions schema
+create or replace function public.create_default_api_keys()
+returns trigger
+language plpgsql
+security definer
+as $$
+declare
+  read_key text;
+  write_key text;
+  read_key_hash text;
+  write_key_hash text;
+begin
+  -- Generate API keys
+  read_key := public.generate_api_key();
+  write_key := public.generate_api_key();
+  
+  -- Hash the keys
+  read_key_hash := extensions.crypt(read_key, extensions.gen_salt('bf'));
+  write_key_hash := extensions.crypt(write_key, extensions.gen_salt('bf'));
+
+  -- Insert read-only API key
+  insert into public.api_keys (
+    name,
+    key_hash,
+    owner_id,
+    database_id,
+    permissions
+  ) values (
+    new.name || ' - Read Only',
+    read_key_hash,
+    new.owner_id,
+    new.id,
+    '{"read": true, "write": false}'::jsonb
+  );
+
+  -- Insert read-write API key
+  insert into public.api_keys (
+    name,
+    key_hash,
+    owner_id,
+    database_id,
+    permissions
+  ) values (
+    new.name || ' - Read Write',
+    write_key_hash,
+    new.owner_id,
+    new.id,
+    '{"read": true, "write": true}'::jsonb
+  );
+
+  -- Store the plain text keys temporarily in a separate audit table
+  -- so they can be displayed to the user once after creation
+  insert into public.new_api_keys_audit (
+    database_id,
+    read_key,
+    write_key,
+    created_at
+  ) values (
+    new.id,
+    read_key,
+    write_key,
+    now()
+  );
+
+  return new;
 end;
 $$;
