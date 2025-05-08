@@ -34,6 +34,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_keys: {
+        Row: {
+          created_at: string
+          database_id: string
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          key_hash: string
+          last_used_at: string | null
+          name: string
+          owner_id: string
+          permissions: Json
+          slug: string
+        }
+        Insert: {
+          created_at?: string
+          database_id: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          key_hash: string
+          last_used_at?: string | null
+          name: string
+          owner_id: string
+          permissions?: Json
+          slug: string
+        }
+        Update: {
+          created_at?: string
+          database_id?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          key_hash?: string
+          last_used_at?: string | null
+          name?: string
+          owner_id?: string
+          permissions?: Json
+          slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_keys_database_id_fkey"
+            columns: ["database_id"]
+            isOneToOne: false
+            referencedRelation: "databases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       databases: {
         Row: {
           created_at: string
@@ -61,21 +111,119 @@ export type Database = {
         }
         Relationships: []
       }
+      new_api_keys_audit: {
+        Row: {
+          created_at: string
+          database_id: string | null
+          id: string
+          read_key: string | null
+          viewed_at: string | null
+          write_key: string | null
+        }
+        Insert: {
+          created_at: string
+          database_id?: string | null
+          id?: string
+          read_key?: string | null
+          viewed_at?: string | null
+          write_key?: string | null
+        }
+        Update: {
+          created_at?: string
+          database_id?: string | null
+          id?: string
+          read_key?: string | null
+          viewed_at?: string | null
+          write_key?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "new_api_keys_audit_database_id_fkey"
+            columns: ["database_id"]
+            isOneToOne: false
+            referencedRelation: "databases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_metrics: {
+        Row: {
+          last_updated_at: string | null
+          total_api_requests: number | null
+          total_egress_bytes: number | null
+          total_read_bytes: number | null
+          total_write_bytes: number | null
+          user_id: string
+        }
+        Insert: {
+          last_updated_at?: string | null
+          total_api_requests?: number | null
+          total_egress_bytes?: number | null
+          total_read_bytes?: number | null
+          total_write_bytes?: number | null
+          user_id: string
+        }
+        Update: {
+          last_updated_at?: string | null
+          total_api_requests?: number | null
+          total_egress_bytes?: number | null
+          total_read_bytes?: number | null
+          total_write_bytes?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_metrics_daily: {
+        Row: {
+          api_requests: number | null
+          created_at: string | null
+          date: string
+          egress_bytes: number | null
+          id: string
+          read_bytes: number | null
+          user_id: string | null
+          write_bytes: number | null
+        }
+        Insert: {
+          api_requests?: number | null
+          created_at?: string | null
+          date: string
+          egress_bytes?: number | null
+          id?: string
+          read_bytes?: number | null
+          user_id?: string | null
+          write_bytes?: number | null
+        }
+        Update: {
+          api_requests?: number | null
+          created_at?: string | null
+          date?: string
+          egress_bytes?: number | null
+          id?: string
+          read_bytes?: number | null
+          user_id?: string | null
+          write_bytes?: number | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
+          email: string
           id: string
           role: Database["public"]["Enums"]["user_role"]
           updated_at: string
         }
         Insert: {
           created_at?: string
+          email: string
           id: string
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
         }
         Update: {
           created_at?: string
+          email?: string
           id?: string
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
@@ -87,9 +235,55 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_api_key: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      generate_unique_slug: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      get_api_keys: {
+        Args: { p_database_id: string }
+        Returns: {
+          read_key: string
+          write_key: string
+          read_slug: string
+          write_slug: string
+        }[]
+      }
+      get_user_metrics: {
+        Args: { p_user_id: string; p_start_date: string; p_end_date: string }
+        Returns: {
+          date: string
+          api_requests: number
+          read_bytes: number
+          write_bytes: number
+          egress_bytes: number
+        }[]
+      }
       is_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      is_admin_for_policy: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      record_api_metrics: {
+        Args: {
+          p_user_id: string
+          p_read_bytes?: number
+          p_write_bytes?: number
+          p_egress_bytes?: number
+        }
+        Returns: undefined
+      }
+      verify_api_key: {
+        Args: { api_key: string; required_permission?: string }
+        Returns: {
+          database_id: string
+        }[]
       }
     }
     Enums: {
