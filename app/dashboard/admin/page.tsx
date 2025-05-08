@@ -3,10 +3,7 @@ import { redirect } from 'next/navigation'
 import type { Database } from '@/lib/database.types'
 
 type UserWithRole = Database['public']['Tables']['user_roles']['Row'] & {
-  users: {
-    email: string | null
-    created_at: string
-  } | null
+  email: string
 }
 
 export default async function AdminDashboardPage() {
@@ -32,13 +29,7 @@ export default async function AdminDashboardPage() {
   // Get platform-wide statistics
   const { data: allUsers, error: usersError } = await supabase
     .from('user_roles')
-    .select(`
-      *,
-      users:auth.users(
-        email,
-        created_at
-      )
-    `)
+    .select('*')
     .order('created_at', { ascending: false }) as { data: UserWithRole[] | null, error: any }
 
   if (usersError) {
@@ -98,7 +89,7 @@ export default async function AdminDashboardPage() {
                 {allUsers?.slice(0, 5).map((user) => (
                   <tr key={user.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {user.users?.email}
+                      {user.email}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -108,7 +99,7 @@ export default async function AdminDashboardPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                      {user.users?.created_at && new Date(user.users.created_at).toLocaleDateString()}
+                      {new Date(user.created_at).toLocaleDateString()}
                     </td>
                   </tr>
                 ))}
